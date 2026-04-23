@@ -1,0 +1,14 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* 对话区 loading：antd Spin 在 .ant-spin-dot-holder 上写死 theme colorPrimary，需覆盖子节点 */
+.vcell-chat-loading-spin.ant-spin,
+.vcell-chat-loading-spin.ant-spin .ant-spin-dot-holder,
+.vcell-chat-loading-spin.ant-spin .ant-spin-dot {
+  color: #424a57 !important;
+}
+

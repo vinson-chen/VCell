@@ -1,0 +1,18 @@
+{
+  "name": "vcell",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w vcell-api\" \"npm run dev -w vcell-web\"",
+    "build": "npm run build -w vcell-api && npm run build -w vcell-web",
+    "dev:web": "npm run dev -w vcell-web",
+    "dev:api": "npm run dev -w vcell-api",
+    "dev:all": "concurrently -n api,web -c blue,green \"npm run dev -w vcell-api\" \"npm run dev -w vcell-web\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
