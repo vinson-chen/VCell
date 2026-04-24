@@ -1,4 +1,4 @@
-import type { TableAreaDemoModel } from 'vc-biz';
+import type { TableAreaDemoModel } from '@vinson.hx/vc-biz';
 
 /** 与 L0 冲突样例 / 回归测试对齐的常用句式，用于对话区补全 */
 const L0_COMPLETION_BASE_PHRASES: readonly string[] = [

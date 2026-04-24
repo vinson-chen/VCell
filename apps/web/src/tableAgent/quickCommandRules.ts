@@ -1,4 +1,4 @@
-import type { TableAreaDemoModel } from 'vc-biz';
+import type { TableAreaDemoModel } from '@vinson.hx/vc-biz';
 import type { TableAgentAction, TableAgentTableFlags } from './tableAgentTypes';
 import { QUICK_RULE_SCHEMA } from './quickRuleSchema';
 

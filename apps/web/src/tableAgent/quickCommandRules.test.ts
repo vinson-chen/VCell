@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TableAreaDemoModel } from 'vc-biz';
+import type { TableAreaDemoModel } from '@vinson.hx/vc-biz';
 import { parseQuickCommand } from './quickCommandRules';
 
 function makeModel(): TableAreaDemoModel {

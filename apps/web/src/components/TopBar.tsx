@@ -1,5 +1,5 @@
-import { TopBar as TopBarFrame } from 'vc-biz';
-import { Avatar, Typography, VcIcon, vcTokens } from 'vc-design';
+import { TopBar as TopBarFrame } from '@vinson.hx/vc-biz';
+import { Avatar, Typography, VcIcon, vcTokens } from '@vinson.hx/vc-design';
 
 /**
  * Figma `top_bar_1600` 文案与素材：品牌字 + 用户头像。

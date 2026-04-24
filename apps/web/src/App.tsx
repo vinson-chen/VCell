@@ -12,8 +12,8 @@ import {
   type TableAreaDemoOptions,
   type VtellMessage,
   type VtellAttachedFile,
-} from 'vc-biz';
-import { Flex, Layout, vcTokens } from 'vc-design';
+} from '@vinson.hx/vc-biz';
+import { Flex, Layout, vcTokens } from '@vinson.hx/vc-design';
 import type { MutableRefObject, PointerEventHandler } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';

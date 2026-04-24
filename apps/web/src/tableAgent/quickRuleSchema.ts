@@ -1,4 +1,4 @@
-import type { TableAreaDemoModel } from 'vc-biz';
+import type { TableAreaDemoModel } from '@vinson.hx/vc-biz';
 import type { TableAgentAction, FilterOperator, SingleFilterCondition } from './tableAgentTypes';
 
 export type QuickRuleMatch = Readonly<{

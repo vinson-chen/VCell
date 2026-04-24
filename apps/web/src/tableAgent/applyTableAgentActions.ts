@@ -1,5 +1,5 @@
 import type { MutableRefObject } from 'react';
-import type { TableAreaDemoModel } from 'vc-biz';
+import type { TableAreaDemoModel } from '@vinson.hx/vc-biz';
 import type { TableAgentAction, FilterOperator, SingleFilterCondition } from './tableAgentTypes';
 import { TABLE_GRID_MAX_COL, TABLE_GRID_MAX_ROW, TABLE_GRID_MIN } from './tableAgentTypes';
 
