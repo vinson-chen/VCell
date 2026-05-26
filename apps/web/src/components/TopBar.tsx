@@ -1,11 +1,16 @@
 import { TopBar as TopBarFrame } from '@vinson.hx/vc-biz';
 import { Avatar, Typography, VcIcon, vcTokens } from '@vinson.hx/vc-design';
 
+interface TopBarProps {
+  onUserClick?: () => void;
+  vtellVisible?: boolean;
+}
+
 /**
  * Figma `top_bar_1600` 文案与素材：品牌字 + 用户头像。
  * 结构完全由 vc-biz TopBar（OperationBar）提供，仅替换左右槽位内容。
  */
-export function TopBar() {
+export function TopBar({ onUserClick, vtellVisible }: TopBarProps) {
   return (
     <TopBarFrame
       left={
@@ -25,7 +30,7 @@ export function TopBar() {
           size={32}
           icon={
             <VcIcon
-              type="user"
+              type={vtellVisible ? 'user' : 'chat'}
               fontSize={16}
               style={{
                 width: 16,
@@ -38,6 +43,7 @@ export function TopBar() {
             />
           }
           style={{ cursor: 'pointer', flexShrink: 0 }}
+          onClick={onUserClick}
         />
       }
     />

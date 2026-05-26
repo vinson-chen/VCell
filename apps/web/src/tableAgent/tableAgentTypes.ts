@@ -196,7 +196,26 @@ export type TableAgentAction =
   /** 与 vc-biz TableArea hiddenColSet 对齐；hidden=true 为隐藏该列 */
   | { type: 'set_column_hidden'; colIndex: number; hidden: boolean }
   /** 显示所有列（清空隐藏集合） */
-  | { type: 'clear_hidden_columns' };
+  | { type: 'clear_hidden_columns' }
+  /** 聚合类型 */
+  | {
+      type: 'aggregate_column';
+      colIndex: number;
+      aggType: 'sum' | 'avg' | 'max' | 'min' | 'count';
+    }
+  /** 对选中区域聚合 */
+  | {
+      type: 'aggregate_selected';
+      aggType: 'sum' | 'avg' | 'max' | 'min' | 'count';
+    }
+  /** 聚合结果（用于返回统计值） */
+  | {
+      type: 'aggregate_result';
+      aggType: 'sum' | 'avg' | 'max' | 'min' | 'count';
+      colName: string;
+      result: number;
+      scope: 'column' | 'selected' | 'filtered';
+    };
 
 export type TableAgentResult = Readonly<{
   reply: string;

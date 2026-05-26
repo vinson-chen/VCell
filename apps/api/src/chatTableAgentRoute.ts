@@ -105,6 +105,7 @@ export async function registerChatTableAgentRoute(app: FastifyInstance): Promise
           messages: ollamaMessages,
           stream: false,
           format: 'json',
+          keep_alive: '5m',
           ...(shouldEnableThinking(model, skillUsed) ? { think: true } : {}),
         }),
       });

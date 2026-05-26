@@ -12,3 +12,15 @@ body,
   color: #424a57 !important;
 }
 
+/* 左侧导航 VCustomTabs 垂直模式的右边框与分割条重叠，隐藏之 */
+.biz-custom-tabs-nav-wrapper .biz-custom-tabs.is-vertical .biz-custom-tabs--bar::before {
+  display: none;
+}
+
+/* 对话区 "/" 补全面板：限制最大高度并允许内部滚动 */
+.vc-biz-vtell-completion-menu .ant-dropdown-menu {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { shouldAttemptFastCommands } from './runtimeRoutePolicy';
 
 describe('runtime route policy', () => {
-  it('tries L1 in qwen mode when L0 misses', () => {
-    expect(shouldAttemptFastCommands(false, 'qwen')).toBe(true);
+  it('skips L1 in qwen mode when L0 misses (goes directly to L2)', () => {
+    expect(shouldAttemptFastCommands(false, 'qwen')).toBe(false);
   });
 
   it('tries L1 in automation_rules mode when L0 misses', () => {

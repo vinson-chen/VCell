@@ -1,6 +1,49 @@
 import type { TableAreaDemoModel } from '@vinson.hx/vc-biz';
 import type { TableAgentAction, FilterOperator, SingleFilterCondition } from './tableAgentTypes';
 
+/** 聚合类型 */
+export type AggType = 'sum' | 'avg' | 'max' | 'min' | 'count';
+
+/** 聚合类型中文映射 */
+const AGG_TYPE_MAP: Record<string, AggType> = {
+  '总和': 'sum',
+  '和': 'sum',
+  '合计': 'sum',
+  '总计': 'sum',
+  '平均': 'avg',
+  '平均值': 'avg',
+  '均值': 'avg',
+  '最大': 'max',
+  '最大值': 'max',
+  '最高': 'max',
+  '最小': 'min',
+  '最小值': 'min',
+  '最低': 'min',
+  '计数': 'count',
+  '数量': 'count',
+  '有多少': 'count',
+};
+
+/** 从文本中解析聚合类型 */
+function parseAggType(text: string): AggType | null {
+  for (const [kw, type] of Object.entries(AGG_TYPE_MAP)) {
+    if (text.includes(kw)) return type;
+  }
+  return null;
+}
+
+/** 解析数值列名关键词 */
+function findNumericColumn(model: TableAreaDemoModel): number | null {
+  const keywords = ['销售额', '金额', '价格', '售价', '数量', '利润', '利润率', '单价'];
+  for (const kw of keywords) {
+    for (let c = 0; c < model.colCount; c++) {
+      const h = model.valueByCell[`header-${c}`] ?? '';
+      if (h.includes(kw)) return c;
+    }
+  }
+  return null;
+}
+
 export type QuickRuleMatch = Readonly<{
   reply: string;
   actions: TableAgentAction[];
@@ -1669,5 +1712,147 @@ export const QUICK_RULE_SCHEMA: QuickRuleDef[] = [
         ],
       };
     },
+  },
+  // === 统计类规则（聚合计算） ===
+  {
+    id: 'aggregate_column_sum',
+    intent: 'aggregate_column',
+    priority: 220,
+    patterns: [
+      /^(?:请)?(?:计算|求|统计)第\s*(\d+)\s*列(?:的)?(?:总和|和|合计|总计)$/,
+      /^(?:请)?第\s*(\d+)\s*列(?:的总和|的和|合计)$/,
+    ],
+    run: (_text, model, m) => {
+      const col = parsePosInt(m[1]);
+      if (col == null) return null;
+      const colIndex = col - 1;
+      if (colIndex < 0 || colIndex >= model.colCount) return null;
+      const header = model.valueByCell[`header-${colIndex}`] ?? `第${col}列`;
+      return {
+        reply: `已计算第 ${col} 列「${header}」的总和。`,
+        actions: [{ type: 'aggregate_column', colIndex, aggType: 'sum' }],
+      };
+    },
+  },
+  {
+    id: 'aggregate_column_avg',
+    intent: 'aggregate_column',
+    priority: 219,
+    patterns: [
+      /^(?:请)?(?:计算|求|统计)第\s*(\d+)\s*列(?:的)?(?:平均|平均值|均值)$/,
+      /^(?:请)?第\s*(\d+)\s*列(?:的平均|的平均值)$/,
+    ],
+    run: (_text, model, m) => {
+      const col = parsePosInt(m[1]);
+      if (col == null) return null;
+      const colIndex = col - 1;
+      if (colIndex < 0 || colIndex >= model.colCount) return null;
+      const header = model.valueByCell[`header-${colIndex}`] ?? `第${col}列`;
+      return {
+        reply: `已计算第 ${col} 列「${header}」的平均值。`,
+        actions: [{ type: 'aggregate_column', colIndex, aggType: 'avg' }],
+      };
+    },
+  },
+  {
+    id: 'aggregate_column_max_min',
+    intent: 'aggregate_column',
+    priority: 218,
+    patterns: [
+      /^(?:请)?(?:计算|求|统计|查看)第\s*(\d+)\s*列(?:的)?(?:最大值|最小值|最大|最小)$/,
+      /^(?:请)?第\s*(\d+)\s*列(?:最大值|最小值|最大|最小)$/,
+    ],
+    run: (_text, model, m) => {
+      const col = parsePosInt(m[1]);
+      if (col == null) return null;
+      const colIndex = col - 1;
+      if (colIndex < 0 || colIndex >= model.colCount) return null;
+      const header = model.valueByCell[`header-${colIndex}`] ?? `第${col}列`;
+      const aggType = /最大/.test(m[0] ?? '') ? 'max' : 'min';
+      return {
+        reply: `已计算第 ${col} 列「${header}」的${aggType === 'max' ? '最大值' : '最小值'}。`,
+        actions: [{ type: 'aggregate_column', colIndex, aggType }],
+      };
+    },
+  },
+  {
+    id: 'aggregate_column_count',
+    intent: 'aggregate_column',
+    priority: 217,
+    patterns: [
+      /^(?:请)?(?:统计|计算)第\s*(\d+)\s*列(?:有)?(?:多少|数量|计数|个数)$/,
+      /^(?:请)?第\s*(\d+)\s*列(?:有多少|数量)$/,
+    ],
+    run: (_text, model, m) => {
+      const col = parsePosInt(m[1]);
+      if (col == null) return null;
+      const colIndex = col - 1;
+      if (colIndex < 0 || colIndex >= model.colCount) return null;
+      const header = model.valueByCell[`header-${colIndex}`] ?? `第${col}列`;
+      return {
+        reply: `已统计第 ${col} 列「${header}」的数量。`,
+        actions: [{ type: 'aggregate_column', colIndex, aggType: 'count' }],
+      };
+    },
+  },
+  {
+    id: 'aggregate_column_by_header',
+    intent: 'aggregate_column',
+    priority: 215,
+    patterns: [
+      /^(?:请)?(?:计算|求|统计)(.+?)列(?:的)?(?:总和|和|合计|平均|平均值|最大值|最小值|数量|计数)$/,
+      /^(.+?)列(?:的)?(?:总和|和|合计|平均|平均值|最大值|最小值|数量|计数)$/,
+    ],
+    run: (_text, model, m) => {
+      const kw = (m[1] ?? '').trim();
+      if (!kw) return null;
+      const colIndex = findColumnByHeaderKeyword(model, kw);
+      if (colIndex == null) return null;
+      const header = model.valueByCell[`header-${colIndex}`] ?? kw;
+      const aggType = parseAggType(m[0] ?? '') ?? 'sum';
+      const aggName = AGG_TYPE_MAP[aggType] ? Object.keys(AGG_TYPE_MAP).find(k => AGG_TYPE_MAP[k] === aggType) : '总和';
+      return {
+        reply: `已计算「${header}」列的${aggName}。`,
+        actions: [{ type: 'aggregate_column', colIndex, aggType }],
+      };
+    },
+  },
+  {
+    id: 'aggregate_selected_sum',
+    intent: 'aggregate_selected',
+    priority: 210,
+    patterns: [
+      /^(?:请)?(?:计算|求|统计)(?:选中|已选中|勾选)(?:的)?(?:数值|单元格|内容)?(?:的)?(?:总和|和|合计)$/,
+      /^(?:请)?(?:计算|求)(?:选中|已选中)(?:的)?(?:总和|和)$/,
+    ],
+    run: () => ({
+      reply: '已计算选中区域的数值总和。',
+      actions: [{ type: 'aggregate_selected', aggType: 'sum' }],
+    }),
+  },
+  {
+    id: 'aggregate_selected_avg',
+    intent: 'aggregate_selected',
+    priority: 209,
+    patterns: [
+      /^(?:请)?(?:计算|求|统计)(?:选中|已选中|勾选)(?:的)?(?:数值|单元格|内容)(?:的)?(?:平均|平均值)$/,
+      /^(?:请)?(?:计算|求)(?:选中|已选中)(?:的)?平均$/,
+    ],
+    run: () => ({
+      reply: '已计算选中区域的数值平均值。',
+      actions: [{ type: 'aggregate_selected', aggType: 'avg' }],
+    }),
+  },
+  {
+    id: 'aggregate_selected_count',
+    intent: 'aggregate_selected',
+    priority: 208,
+    patterns: [
+      /^(?:请)?(?:统计|计算)(?:选中|已选中|勾选)(?:的)?(?:有多少|数量|计数|个数)$/,
+    ],
+    run: () => ({
+      reply: '已统计选中区域的单元格数量。',
+      actions: [{ type: 'aggregate_selected', aggType: 'count' }],
+    }),
   },
 ];

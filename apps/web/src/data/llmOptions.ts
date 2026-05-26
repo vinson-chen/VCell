@@ -6,10 +6,10 @@ export type ChatLlmOption = Readonly<{
 }>;
 
 /** 与「Qwen」选项对应的 Ollama 模型名（可通过 VITE_OLLAMA_MODEL 覆盖） */
-export const QWEN_OLLAMA_MODEL = 'qwen2.5:14b';
+export const QWEN_OLLAMA_MODEL = 'qwen3.5:9b';
 
 /** 与「DeepSeek」选项对应的 Ollama 模型名（可通过 VITE_DEEPSEEK_OLLAMA_MODEL 覆盖） */
-export const DEEPSEEK_OLLAMA_MODEL = 'deepseek-r1:8b';
+export const DEEPSEEK_OLLAMA_MODEL = 'deepseek-coder:6.7b';
 
 export const CHAT_LLM_OPTIONS: ChatLlmOption[] = [
   { value: 'automation_rules', label: '预设规则' },
@@ -17,7 +17,7 @@ export const CHAT_LLM_OPTIONS: ChatLlmOption[] = [
   { value: 'deepseek', label: 'DeepSeek' },
 ];
 
-export const DEFAULT_CHAT_LLM_VALUE = 'qwen';
+export const DEFAULT_CHAT_LLM_VALUE = 'deepseek';
 
 /** 将右侧下拉选中的 value 解析为发给 BFF / Ollama 的模型名 */
 export function resolveOllamaModelForLlmValue(chatLlm: string): string | undefined {

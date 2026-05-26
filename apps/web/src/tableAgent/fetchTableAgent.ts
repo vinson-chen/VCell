@@ -71,8 +71,26 @@ export async function fetchTableAgent(
   messages: ChatTurn[],
   table: TableSnapshot,
   model?: string,
-  skill?: TableAgentSkillMode
+  skill?: TableAgentSkillMode,
+  timeoutMs = 30000,
+  externalSignal?: AbortSignal
 ): Promise<TableAgentApiOk | TableAgentApiErr> {
+  // 使用 AbortController 实现超时控制，同时支持外部取消
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+
+  // 监听外部取消信号
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timeoutId);
+      return { error: '请求已取消。' };
+    }
+    externalSignal.addEventListener('abort', () => {
+      abortController.abort();
+      clearTimeout(timeoutId);
+    });
+  }
+
   let res: Response;
   try {
     res = await fetch(`${apiBase()}/api/chat/table-agent`, {
@@ -84,11 +102,20 @@ export async function fetchTableAgent(
         ...(model ? { model } : {}),
         ...(skill ? { skill } : {}),
       }),
+      signal: abortController.signal,
     });
   } catch (e) {
+    clearTimeout(timeoutId);
+    if (e instanceof Error && e.name === 'AbortError') {
+      return {
+        error: `请求超时（${timeoutMs / 1000}秒）。Ollama 模型响应过慢，请尝试切换更快的模型或减小表格数据量。`,
+      };
+    }
     return {
       error: `网络错误：${e instanceof Error ? e.message : String(e)}。请检查 vcell-api 是否已启动、浏览器是否可访问本页同源 /api。`,
     };
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const text = await res.text();

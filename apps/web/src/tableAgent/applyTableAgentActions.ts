@@ -66,7 +66,7 @@ function replaceText(raw: string, find: string, replace: string, matchCase: bool
   return raw.replace(new RegExp(escaped, 'gi'), replace);
 }
 
-function getSelectedBodyRows(model: TableAreaDemoModel): number[] {
+export function getSelectedBodyRows(model: TableAreaDemoModel): number[] {
   const store = model.bodyRowSelectionStore;
   if (!store) return [];
   const n = Math.max(0, store.getBodyRowCount());
@@ -157,27 +157,61 @@ function evaluateMultiCondition(
 }
 
 /**
- * 连续的 delete_body_row / delete_column 若按升序执行会导致索引错位。
- * 将同类型相邻动作按索引降序执行，等价于一次性删除用户口中的多行/多列。
+ * 连续或交错的 delete_body_row / delete_column / insert_rows_at / insert_columns_at
+ * 若按升序或随机顺序执行会导致索引错位。
+ * 此处将所有针对「当前快照」生成的索引敏感操作进行分组并按索引降序排序。
  */
-function normalizeActionsForStableIndexDeletes(actions: TableAgentAction[]): TableAgentAction[] {
+function normalizeActionsForStableIndexOperations(actions: TableAgentAction[]): TableAgentAction[] {
   const out: TableAgentAction[] = [];
   let i = 0;
   while (i < actions.length) {
     const a = actions[i];
-    if (a.type === 'delete_body_row') {
-      let j = i + 1;
-      while (j < actions.length && actions[j].type === 'delete_body_row') j += 1;
-      const chunk = actions.slice(i, j) as Array<Extract<TableAgentAction, { type: 'delete_body_row' }>>;
-      chunk.sort((x, y) => y.rowIndex - x.rowIndex);
-      out.push(...chunk);
+
+    // 收集连续的行索引敏感操作
+    if (a.type === 'delete_body_row' || a.type === 'insert_rows_at') {
+      let j = i;
+      const rowOps: TableAgentAction[] = [];
+      while (j < actions.length) {
+        const next = actions[j];
+        if (next.type === 'delete_body_row' || next.type === 'insert_rows_at') {
+          rowOps.push(next);
+          j += 1;
+        } else if (next.type === 'set_cells' || next.type === 'set_table_flags') {
+          // 不干扰索引的轻量操作可以跟着一起排队，或者直接跳过
+          // 这里为了简单，只收集连续的索引操作
+          break;
+        } else {
+          break;
+        }
+      }
+      // 按索引降序排序：先处理后面的行，不影响前面行的索引
+      rowOps.sort((x, y) => {
+        const idxX = x.type === 'delete_body_row' ? x.rowIndex : (x as Extract<TableAgentAction, { type: 'insert_rows_at' }>).index;
+        const idxY = y.type === 'delete_body_row' ? y.rowIndex : (y as Extract<TableAgentAction, { type: 'insert_rows_at' }>).index;
+        return idxY - idxX;
+      });
+      out.push(...rowOps);
       i = j;
-    } else if (a.type === 'delete_column') {
-      let j = i + 1;
-      while (j < actions.length && actions[j].type === 'delete_column') j += 1;
-      const chunk = actions.slice(i, j) as Array<Extract<TableAgentAction, { type: 'delete_column' }>>;
-      chunk.sort((x, y) => y.colIndex - x.colIndex);
-      out.push(...chunk);
+    }
+    // 收集连续的列索引敏感操作
+    else if (a.type === 'delete_column' || a.type === 'insert_columns_at') {
+      let j = i;
+      const colOps: TableAgentAction[] = [];
+      while (j < actions.length) {
+        const next = actions[j];
+        if (next.type === 'delete_column' || next.type === 'insert_columns_at') {
+          colOps.push(next);
+          j += 1;
+        } else {
+          break;
+        }
+      }
+      colOps.sort((x, y) => {
+        const idxX = x.type === 'delete_column' ? x.colIndex : (x as Extract<TableAgentAction, { type: 'insert_columns_at' }>).index;
+        const idxY = y.type === 'delete_column' ? y.colIndex : (y as Extract<TableAgentAction, { type: 'insert_columns_at' }>).index;
+        return idxY - idxX;
+      });
+      out.push(...colOps);
       i = j;
     } else {
       out.push(a);
@@ -192,10 +226,19 @@ export type TableDimsRef = Readonly<{
   colCountRef: MutableRefObject<number>;
 }>;
 
+export type AggregateResult = Readonly<{
+  aggType: 'sum' | 'avg' | 'max' | 'min' | 'count';
+  colName?: string;
+  result: number;
+  scope: 'column' | 'selected' | 'filtered';
+}>;
+
 export type ApplyTableAgentReport = Readonly<{
   applied: number;
   skipped: number;
   notes: string[];
+  /** 统计结果（聚合计算返回值） */
+  aggregateResult?: AggregateResult;
 }>;
 
 export type ApplyTableAgentOptions = Readonly<{
@@ -216,6 +259,7 @@ export function applyTableAgentActions(
   const notes: string[] = [];
   let applied = 0;
   let skipped = 0;
+  let aggregateResult: AggregateResult | undefined = undefined;
 
   const {
     setRowCount,
@@ -237,7 +281,7 @@ export function applyTableAgentActions(
     setAllColumnsHidden,
   } = model;
 
-  const normalizedActions = normalizeActionsForStableIndexDeletes(actions);
+  const normalizedActions = normalizeActionsForStableIndexOperations(actions);
 
   for (const action of normalizedActions) {
     run(() => {
@@ -247,7 +291,7 @@ export function applyTableAgentActions(
 
       switch (action.type) {
         case 'set_cells': {
-          const entries = Object.entries(action.values).filter(([k]) => isValidCellKey(k));
+          const entries = Object.entries(action.values).filter(([k]) => isValidCellKey(k)) as Array<[string, string]>;
           if (entries.length === 0) {
             skipped += 1;
             notes.push('set_cells 无有效键，已跳过');
@@ -425,14 +469,14 @@ export function applyTableAgentActions(
           break;
         }
         case 'reorder_columns': {
-          const order = action.order.map((x) => Math.trunc(x));
+          const order = action.order.map((x: number) => Math.trunc(x));
           if (order.length !== colCount) {
             skipped += 1;
             notes.push(`reorder_columns 长度 ${order.length} 与当前列数 ${colCount} 不一致`);
             break;
           }
           const uniq = new Set(order);
-          const validRange = order.every((x) => x >= 0 && x < colCount);
+          const validRange = order.every((x: number) => x >= 0 && x < colCount);
           if (!validRange || uniq.size !== colCount) {
             skipped += 1;
             notes.push('reorder_columns 目标顺序非法（越界或重复）');
@@ -457,7 +501,7 @@ export function applyTableAgentActions(
           break;
         }
         case 'sort_body_rows': {
-          const keys = action.keys.map((k) => ({
+          const keys = action.keys.map((k: { colIndex: number; direction: 'asc' | 'desc' }) => ({
             colIndex: Math.trunc(k.colIndex),
             direction: k.direction,
           }));
@@ -466,7 +510,7 @@ export function applyTableAgentActions(
             notes.push('sort_body_rows 缺少排序键');
             break;
           }
-          const invalid = keys.some((k) => k.colIndex < 0 || k.colIndex >= colCount);
+          const invalid = keys.some((k: { colIndex: number }) => k.colIndex < 0 || k.colIndex >= colCount);
           if (invalid) {
             skipped += 1;
             notes.push('sort_body_rows 存在越界列');
@@ -664,13 +708,13 @@ export function applyTableAgentActions(
           break;
         }
         case 'dedupe_rows_by_columns': {
-          const cols = action.colIndices.map((c) => Math.trunc(c));
+          const cols = action.colIndices.map((c: number) => Math.trunc(c));
           if (cols.length === 0) {
             skipped += 1;
             notes.push('dedupe_rows_by_columns 缺少列');
             break;
           }
-          if (cols.some((c) => c < 0 || c >= colCount)) {
+          if (cols.some((c: number) => c < 0 || c >= colCount)) {
             skipped += 1;
             notes.push('dedupe_rows_by_columns 存在越界列');
             break;
@@ -1404,11 +1448,99 @@ export function applyTableAgentActions(
           applied += 1;
           break;
         }
+        // === 统计类动作（聚合计算，不修改表格数据） ===
+        case 'aggregate_column': {
+          const c0 = Math.trunc(action.colIndex);
+          if (c0 < 0 || c0 >= colCount) {
+            skipped += 1;
+            notes.push('aggregate_column 列号越界');
+            break;
+          }
+          const colName = model.valueByCell[headerKey(c0)] ?? `第${c0 + 1}列`;
+          const values: number[] = [];
+          for (let r = 0; r < bodyRows; r += 1) {
+            const raw = model.valueByCell[bodyKey(r, c0)] ?? '';
+            const num = parseCellNumber(raw);
+            if (num != null) values.push(num);
+          }
+          if (values.length === 0 && action.aggType !== 'count') {
+            skipped += 1;
+            notes.push(`列「${colName}」无有效数值，无法计算`);
+            break;
+          }
+          let result: number;
+          switch (action.aggType) {
+            case 'sum':
+              result = values.reduce((a, b) => a + b, 0);
+              break;
+            case 'avg':
+              result = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+              break;
+            case 'max':
+              result = values.length > 0 ? Math.max(...values) : 0;
+              break;
+            case 'min':
+              result = values.length > 0 ? Math.min(...values) : 0;
+              break;
+            case 'count':
+              result = bodyRows;
+              break;
+            default:
+              result = 0;
+          }
+          applied += 1;
+          aggregateResult = { aggType: action.aggType, colName, result, scope: 'column' };
+          break;
+        }
+        case 'aggregate_selected': {
+          const selectedRows = getSelectedBodyRows(model);
+          if (selectedRows.length === 0) {
+            skipped += 1;
+            notes.push('aggregate_selected：未选中任何行');
+            break;
+          }
+          const values: number[] = [];
+          for (const r of selectedRows) {
+            for (let c = 0; c < colCount; c += 1) {
+              const raw = model.valueByCell[bodyKey(r, c)] ?? '';
+              const num = parseCellNumber(raw);
+              if (num != null) values.push(num);
+            }
+          }
+          if (values.length === 0 && action.aggType !== 'count') {
+            skipped += 1;
+            notes.push('选中区域无有效数值');
+            break;
+          }
+          let result: number;
+          switch (action.aggType) {
+            case 'sum':
+              result = values.reduce((a, b) => a + b, 0);
+              break;
+            case 'avg':
+              result = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+              break;
+            case 'max':
+              result = values.length > 0 ? Math.max(...values) : 0;
+              break;
+            case 'min':
+              result = values.length > 0 ? Math.min(...values) : 0;
+              break;
+            case 'count':
+              result = values.length;
+              break;
+            default:
+              result = 0;
+          }
+          applied += 1;
+          aggregateResult = { aggType: action.aggType, result, scope: 'selected' };
+          break;
+        }
         default:
           skipped += 1;
       }
     });
   }
 
-  return { applied, skipped, notes };
+  return { applied, skipped, notes, aggregateResult };
 }

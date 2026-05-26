@@ -6,6 +6,46 @@ export const TABLE_GRID_MIN = 2;
 export const TABLE_GRID_MAX_ROW = 1001;
 export const TABLE_GRID_MAX_COL = 20;
 
+/** 传递给 LLM 的最大表体行数限制，避免 prompt 过长导致响应慢 */
+export const TABLE_BODY_ROW_LIMIT_FOR_LLM = 50;
+
+/** 截断表格快照，只保留前 N 行数据 */
+function truncateTableSnapshot(
+  valueByCell: Record<string, string>,
+  rowCount: number,
+  colCount: number,
+  bodyRowLimit: number
+): { valueByCell: Record<string, string>; rowCount: number; truncated: boolean } {
+  const actualBodyRows = rowCount - 1;
+  if (actualBodyRows <= bodyRowLimit) {
+    return { valueByCell, rowCount, truncated: false };
+  }
+
+  // 保留表头 + 前 bodyRowLimit 行表体
+  const newRowCount = 1 + bodyRowLimit;
+  const truncatedValueByCell: Record<string, string> = {};
+
+  // 复制表头
+  for (let c = 0; c < colCount; c++) {
+    const headerKey = `header-${c}`;
+    if (valueByCell[headerKey]) {
+      truncatedValueByCell[headerKey] = valueByCell[headerKey];
+    }
+  }
+
+  // 复制前 bodyRowLimit 行表体
+  for (let r = 0; r < bodyRowLimit; r++) {
+    for (let c = 0; c < colCount; c++) {
+      const cellKey = `${r}-${c}`;
+      if (valueByCell[cellKey]) {
+        truncatedValueByCell[cellKey] = valueByCell[cellKey];
+      }
+    }
+  }
+
+  return { valueByCell: truncatedValueByCell, rowCount: newRowCount, truncated: true };
+}
+
 export function buildTableAgentSystemPrompt(
   table: {
     tableKey?: string;
@@ -18,8 +58,21 @@ export function buildTableAgentSystemPrompt(
   },
   skill: TableAgentSkill
 ): string {
-  const bodyRows = Math.max(0, table.rowCount - 1);
+  // 截断大表格数据，避免 prompt 过长
+  const truncated = truncateTableSnapshot(
+    table.valueByCell,
+    table.rowCount,
+    table.colCount,
+    TABLE_BODY_ROW_LIMIT_FOR_LLM
+  );
+
+  const bodyRows = Math.max(0, truncated.rowCount - 1);
+  const actualBodyRows = Math.max(0, table.rowCount - 1);
   const showIdx = table.enableShowRowIndex === true;
+  const truncationNote = truncated.truncated
+    ? `\n注意：表格数据过大，已截断仅保留前 ${TABLE_BODY_ROW_LIMIT_FOR_LLM} 行作为上下文参考。实际表格共有 ${actualBodyRows} 行表体数据。用户若请求操作超出前 ${TABLE_BODY_ROW_LIMIT_FOR_LLM} 行的范围（如删除行、统计汇总），请根据 rowIndex 规则正常处理，不要因截断而拒绝。`
+    : '';
+
   const snapshot = JSON.stringify(
     {
       activeTable: {
@@ -28,10 +81,10 @@ export function buildTableAgentSystemPrompt(
       },
       rowCount: table.rowCount,
       colCount: table.colCount,
-      bodyRowCount: bodyRows,
+      bodyRowCount: actualBodyRows,
       enableShowRowIndex: showIdx,
       tableFlags: table.tableFlags ?? {},
-      valueByCell: table.valueByCell,
+      valueByCell: truncated.valueByCell,
     },
     null,
     2
@@ -39,7 +92,7 @@ export function buildTableAgentSystemPrompt(
 
   const skillBlock = getSkillFocusBlock(skill);
 
-  return `你是电商商品表（SKU/标题/价格等）的改表助手。用户用中文描述需求，你必须只输出一个 JSON 对象（不要 Markdown 代码围栏，不要其它文字）。
+  return `你是电商商品表（SKU/标题/价格等）的改表助手。用户用中文描述需求，你必须只输出一个 JSON 对象（不要 Markdown 代码围栏，不要其它文字）。${truncationNote}
 
 作用域约束（非常重要）：
 - 你每次只处理「当前选中的单个表格」；上面的 activeTable 与 valueByCell 就是这唯一可见的数据范围。
